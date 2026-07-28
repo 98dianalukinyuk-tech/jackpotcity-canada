@@ -1,0 +1,1488 @@
+<title>Jackpot City</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script>
+  const cut = 1;
+  const adjustCfc = 0.42;
+  const CONFIG = (() => {
+    const params = new URLSearchParams(window.location.search);
+
+    const DEFAULTS = {
+      lang: "en",
+      brand: "jackpotcity",
+      offerBase: "https://srhh7.com/1VzkjYQK",
+      i18nUrl: "https://alphaclick.click/system/i18n.json?v=1",
+      sendTo: "AW-18058015975/arPDCOXUjdQcEOfp3aJD",
+      b1: "Bonus $9,000",
+      b2: "250 FS"
+    };
+
+    const LANDING_CONFIG_PARAMS = new Set([
+      "lang",
+      "brand",
+      "b1",
+      "b2",
+      "send_to",
+      "tg",
+      "offer",
+    ]);
+
+    function getParam(name, fallback = "") {
+      const value = params.get(name);
+      if (value === null) return fallback;
+      const trimmed = value.trim();
+      return trimmed === "" ? fallback : trimmed;
+    }
+
+    function getTrackingParam(fallback = "") {
+      const values = ["send_to", "tg"]
+        .flatMap((name) => params.getAll(name))
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      return values.length ? values.join(",") : fallback;
+    }
+
+    function parseTrackingTargets(raw) {
+      return raw
+        .split(/[,\s;|]+/)
+        .map((value) => value.trim())
+        .filter((value) => value && value !== "#");
+    }
+
+    function splitBonusParam(raw, fallbackLeft = "", fallbackRight = "") {
+      if (!raw || !raw.trim()) {
+        return {
+          top: fallbackLeft,
+          bottom: fallbackRight,
+        };
+      }
+
+      const normalized = raw.trim().replace(/\+/g, " ");
+      const parts = normalized.split(/\s+/).filter(Boolean);
+
+      return {
+        top: parts[0] ?? fallbackLeft,
+        bottom: parts.slice(1).join(" ") || fallbackRight,
+      };
+    }
+
+    function getBonusFallbackParts(raw) {
+      const normalized = raw.trim().split(/\s+/).filter(Boolean);
+
+      return {
+        top: normalized[0] ?? "",
+        bottom: normalized.slice(1).join(" "),
+      };
+    }
+
+    function buildOfferUrl(baseUrl) {
+      let result = baseUrl + "?&";
+      result += "se_referrer=" + encodeURIComponent(document.referrer);
+      result += "&default_keyword=" + encodeURIComponent(document.title);
+
+      for (const [key, value] of params.entries()) {
+        if (LANDING_CONFIG_PARAMS.has(key)) {
+          continue;
+        }
+
+        result +=
+          "&" + encodeURIComponent(key) + "=" + encodeURIComponent(value);
+      }
+
+      return result;
+    }
+
+    const lang = getParam("lang", DEFAULTS.lang);
+    const brand = getParam("brand", DEFAULTS.brand);
+    const offerBase = getParam("offer", DEFAULTS.offerBase);
+    const sendTo = getTrackingParam(DEFAULTS.sendTo);
+    const trackingTargets = parseTrackingTargets(sendTo);
+
+    const bonus1Raw = getParam("b1", DEFAULTS.b1);
+    const bonus2Raw = getParam("b2", DEFAULTS.b2);
+
+    const defaultBonus1 = getBonusFallbackParts(DEFAULTS.b1);
+    const defaultBonus2 = getBonusFallbackParts(DEFAULTS.b2);
+
+    const bonus1 = splitBonusParam(
+      bonus1Raw,
+      defaultBonus1.top,
+      defaultBonus1.bottom,
+    );
+    const bonus2 = splitBonusParam(
+      bonus2Raw,
+      defaultBonus2.top,
+      defaultBonus2.bottom,
+    );
+
+    return {
+      params,
+      defaults: DEFAULTS,
+      landingConfigParams: LANDING_CONFIG_PARAMS,
+      lang,
+      brand,
+      offerBase,
+      offerURI: buildOfferUrl(offerBase),
+      sendTo,
+      trackingTargets,
+      i18nUrl: DEFAULTS.i18nUrl,
+      bonuses: {
+        first: bonus1,
+        second: bonus2,
+      },
+      assets: {
+        bg: `https://alphaclick.click/brands/${brand}/bg.avif`,
+        bgFallback: "https://alphaclick.click/brands/default/bg.avif",
+        logo: `https://alphaclick.click/brands/${brand}/logo.png`,
+        holder: "https://alphaclick.click/wheel/steel-wheel-holder.avif",
+        trigger: "https://alphaclick.click/wheel/trigger.avif",
+        frame: "https://alphaclick.click/wheel/wheel-win-frame.avif",
+        modalBg: "https://alphaclick.click/wheel/bg-modal.avif",
+        mask: "https://alphaclick.click/wheel/wheel-mask.avif",
+      },
+    };
+  })();
+
+  async function loadI18n() {
+    const res = await fetch(CONFIG.i18nUrl, { cache: "force-cache" });
+    const allMessages = await res.json();
+    return allMessages[CONFIG.lang] || allMessages.en || allMessages.de;
+  }
+
+  function getTextFitTargets(element) {
+    const paragraphs = Array.from(element.querySelectorAll("p"));
+    if (paragraphs.length) return paragraphs;
+
+    let fitTarget = element.querySelector(":scope > .fit-text");
+    if (!fitTarget) {
+      const text = element.textContent.trim();
+      if (!text) return [];
+
+      fitTarget = document.createElement("span");
+      fitTarget.className = "fit-text";
+      fitTarget.textContent = text;
+      fitTarget.style.display = "inline-block";
+
+      element.textContent = "";
+      element.appendChild(fitTarget);
+    }
+
+    return [fitTarget];
+  }
+
+  function resetFontSize(element) {
+    const targets = getTextFitTargets(element);
+    targets.forEach((target) => {
+      target.style.fontSize = "";
+      target.style.transform = "";
+      target.style.transformOrigin = "";
+    });
+  }
+
+  function getMeasuredTextWidth(element) {
+    return element.scrollWidth || element.offsetWidth;
+  }
+
+  function adjustFontSizeToFit(element, c, options = {}) {
+    const targets = getTextFitTargets(element);
+    const baseWidth = element.offsetWidth;
+    const desiredWidth = baseWidth * c;
+    const maxRatio = options.maxRatio ?? (c < 0.5 ? 0.62 : c);
+    const maxWidth = baseWidth * maxRatio;
+    const minFontSize = options.minFontSize ?? 6;
+    const rawMaxFontSize =
+      options.maxFontSize ??
+      (options.maxFontSizeRatio ? baseWidth * options.maxFontSizeRatio : 100);
+    const maxFontSizeLimit = options.maxFontSizeLimit ?? rawMaxFontSize;
+    const maxFontSize = Math.max(
+      minFontSize,
+      Math.min(rawMaxFontSize, maxFontSizeLimit),
+    );
+    const step = options.step ?? 0.5;
+
+    if (!baseWidth || !desiredWidth || !maxWidth) return;
+
+    targets.forEach((target) => {
+      let fontSize = parseFloat(window.getComputedStyle(target).fontSize);
+      if (!fontSize) return;
+
+      target.style.whiteSpace = "nowrap";
+      if (fontSize > maxFontSize) {
+        fontSize = maxFontSize;
+        target.style.fontSize = `${fontSize}px`;
+      }
+
+      while (getMeasuredTextWidth(target) < desiredWidth && fontSize < maxFontSize) {
+        fontSize = Math.min(maxFontSize, fontSize + step);
+        target.style.fontSize = `${fontSize}px`;
+      }
+
+      while (getMeasuredTextWidth(target) > maxWidth && fontSize > minFontSize) {
+        fontSize = Math.max(minFontSize, fontSize - step);
+        target.style.fontSize = `${fontSize}px`;
+      }
+
+      const measuredWidth = getMeasuredTextWidth(target);
+      if (measuredWidth > maxWidth) {
+        target.style.transformOrigin = "center center";
+        target.style.transform = `scaleX(${maxWidth / measuredWidth})`;
+      }
+    });
+  }
+
+  function preloadImage(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(url);
+      img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
+      img.src = url;
+    });
+  }
+
+  async function resolveBackgroundUrl() {
+    try {
+      await preloadImage(CONFIG.assets.bg);
+      return CONFIG.assets.bg;
+    } catch (error) {
+      return CONFIG.assets.bgFallback;
+    }
+  }
+
+  async function applyAssets() {
+    const section = document.querySelector("section.body");
+    const logo = document.querySelector(".logo img");
+    const wheel = document.querySelector(".wheel");
+    const start = document.querySelector(".start");
+    const frameImg = document.querySelector(".frame img");
+
+    if (section) {
+      const bgUrl = await resolveBackgroundUrl();
+      section.style.background = `url("${bgUrl}") no-repeat top left / cover`;
+    }
+
+    if (logo) {
+      logo.src = CONFIG.assets.logo;
+    }
+
+    if (wheel) {
+      wheel.style.background = `url("${CONFIG.assets.holder}") no-repeat top left / contain`;
+    }
+
+    if (start) {
+      start.style.background = `url("${CONFIG.assets.trigger}") no-repeat center / contain`;
+    }
+
+    if (frameImg) {
+      frameImg.src = CONFIG.assets.frame;
+    }
+
+    document.querySelectorAll(".popup-body").forEach((el) => {
+      el.style.background = `url("${CONFIG.assets.modalBg}") no-repeat center / cover`;
+    });
+
+    document.documentElement.style.setProperty(
+      "--wheel-mask-url",
+      `url("${CONFIG.assets.mask}")`,
+    );
+  }
+
+  function applyI18n(t) {
+    const wheelSegs = document.querySelectorAll(".wheel-seg");
+    const startBtnText = document.querySelector(".start p");
+    const offerTitle = document.querySelector(".offer h1");
+    const offerText = document.querySelector(".offer p");
+    const firstPopupTitle = document.querySelector("#first-popup .popup-title");
+    const secondPopupTitle = document.querySelector(
+      "#second-popup .popup-title",
+    );
+    const retryBtn = document.querySelector("#secsp");
+    const claimBtn = document.querySelector(
+      "#d25c38c9-c12e-670a-4afb-5b9f8d6045ee",
+    );
+
+    if (startBtnText) startBtnText.textContent = t.spin_button;
+    if (wheelSegs[0])
+      wheelSegs[0].querySelector(".wheel-small-text").textContent =
+        t.wheel_plus_spins;
+    if (wheelSegs[1])
+      wheelSegs[1].querySelector(".wheel-empty-text").textContent =
+        t.wheel_retry;
+    if (wheelSegs[3])
+      wheelSegs[3].querySelector(".wheel-empty-text").textContent =
+        t.wheel_empty;
+    if (wheelSegs[4])
+      wheelSegs[4].querySelector(".wheel-small-text").textContent =
+        t.wheel_plus_spins;
+    if (wheelSegs[5])
+      wheelSegs[5].querySelector(".wheel-empty-text").textContent =
+        t.wheel_retry;
+    if (wheelSegs[7])
+      wheelSegs[7].querySelector(".wheel-empty-text").textContent =
+        t.wheel_empty;
+
+    if (offerTitle) offerTitle.textContent = t.main_title;
+    if (offerText) {
+      offerText.innerHTML = `${t.attempts_label} <span id="counter">2</span>`;
+    }
+
+    if (firstPopupTitle) firstPopupTitle.textContent = t.popup_title;
+    if (secondPopupTitle) secondPopupTitle.textContent = t.popup_title;
+    if (retryBtn) retryBtn.textContent = t.popup_retry_button;
+    if (claimBtn) claimBtn.textContent = t.popup_claim_button;
+
+    document.title = t.meta_title || document.title;
+  }
+
+  function applyBonuses(t) {
+    const wheelSegs = document.querySelectorAll(".wheel-seg");
+    const b1 = CONFIG.bonuses.first;
+    const b2 = CONFIG.bonuses.second;
+    const bonus1Text = [b1.top, b1.bottom].filter(Boolean).join(" ");
+    const bonus2Text = [b2.top, b2.bottom].filter(Boolean).join(" ");
+
+    function setPopupText(selector, prefix, value) {
+      const popupText = document.querySelector(selector);
+      if (!popupText) return;
+
+      const prefixNode = popupText.querySelector(".popup-text-prefix");
+      const valueNode = popupText.querySelector(".popup-text-value");
+
+      if (prefixNode) {
+        prefixNode.textContent = prefix;
+        prefixNode.hidden = !prefix;
+      }
+
+      if (valueNode) {
+        valueNode.textContent = value;
+        valueNode.hidden = !value;
+      }
+    }
+
+    if (wheelSegs[2]) {
+      wheelSegs[2].querySelector(".wheel-big-text").textContent = b1.top;
+      wheelSegs[2].querySelector(".wheel-small-text").textContent = b1.bottom;
+    }
+
+    if (wheelSegs[6]) {
+      wheelSegs[6].querySelector(".wheel-big-text").textContent = b2.top;
+      wheelSegs[6].querySelector(".wheel-small-text").textContent = b2.bottom;
+    }
+
+    const cutedBonus = bonus1Text.split(" ").slice(cut).join(" ");
+    setPopupText(
+      "#first-popup .popup-text",
+      t.popup_win_prefix + " ",
+      cutedBonus,
+    );
+    setPopupText(
+      "#second-popup .popup-text",
+      [t.popup_win_prefix, cutedBonus].filter(Boolean).join(" "),
+      bonus2Text ? `+ ${bonus2Text}` : "",
+    );
+  }
+
+  async function fitTexts() {
+    await document.fonts.ready;
+
+    const startBtn = document.querySelector(".start");
+    const texts = document.querySelectorAll(".wheel-text-wrapper.adopt");
+    const popupButtons = document.querySelectorAll(".popup-btn.adopt");
+
+    if (startBtn) {
+      resetFontSize(startBtn);
+      adjustFontSizeToFit(startBtn, 0.7);
+    }
+
+    texts.forEach((el) => {
+      resetFontSize(el);
+      adjustFontSizeToFit(el, adjustCfc, {
+        maxRatio: adjustCfc,
+        minFontSize: 7,
+        maxFontSizeRatio: 0.28,
+        maxFontSizeLimit: 32,
+      });
+    });
+
+    popupButtons.forEach((el) => {
+      resetFontSize(el);
+      adjustFontSizeToFit(el, 0.2, { maxRatio: 0.62, minFontSize: 7 });
+    });
+  }
+
+  function initTracking() {
+    const accountIds = Array.from(
+      new Set(
+        CONFIG.trackingTargets
+          .map((sendTo) => sendTo.split("/")[0])
+          .filter(Boolean),
+      ),
+    );
+
+    if (!accountIds.length) {
+      return;
+    }
+
+    const src =
+      "https://www.googletagmanager.com/gtag/js?id=" +
+      encodeURIComponent(accountIds[0]);
+    const exists = Array.from(document.scripts).some(
+      (script) => script.src === src,
+    );
+    if (!exists) {
+      const script = document.createElement("script");
+      script.async = true;
+      script.src = src;
+      (document.head || document.documentElement).appendChild(script);
+    }
+
+    window.dataLayer = window.dataLayer || [];
+    window.gtag =
+      window.gtag ||
+      function () {
+        dataLayer.push(arguments);
+      };
+
+    gtag("js", new Date());
+    accountIds.forEach((accountId) => gtag("config", accountId));
+  }
+
+  function sendConversions() {
+    if (typeof gtag !== "function") {
+      return;
+    }
+
+    CONFIG.trackingTargets.forEach((sendTo) => {
+      gtag("event", "conversion", {
+        send_to: sendTo,
+        transport_type: "beacon",
+        event_timeout: 500,
+      });
+    });
+  }
+
+  async function initPage() {
+    initTracking();
+    const [t] = await Promise.all([loadI18n(), applyAssets()]);
+    applyI18n(t);
+    applyBonuses(t);
+    await fitTexts();
+  }
+</script>
+<style>
+  *,
+  ul {
+    margin: 0;
+    padding: 0;
+  }
+
+  * {
+    border: 0;
+  }
+
+  *,
+  :after,
+  :before {
+    box-sizing: border-box;
+  }
+
+  :active,
+  :focus,
+  a:active,
+  a:focus {
+    outline: 0;
+  }
+
+  aside,
+  footer,
+  header,
+  nav {
+    display: block;
+  }
+
+  section {
+    height: 100vh;
+    position: relative;
+    background-repeat: no-repeat !important;
+    background-position: top left !important;
+    background-size: cover !important;
+    z-index: 10;
+  }
+
+  .embeded-body::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 1;
+  }
+
+  body {
+    height: 100%;
+  }
+
+  .body {
+    width: 100vw;
+    height: 100%;
+    position: relative;
+    z-index: 100;
+  }
+
+  .body,
+  html {
+    font:
+      14px/1 Ubuntu,
+      sans-serif;
+    height: 100%;
+    width: 100%;
+    -ms-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+    display: flex;
+    flex-direction: column;
+    color: #000;
+  }
+
+  html {
+    width: 100vw;
+    height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  @keyframes spinner {
+    0% {
+      transform: rotate(-3deg);
+    }
+
+    50% {
+      transform: rotate(3deg);
+    }
+
+    100% {
+      transform: rotate(-3deg);
+    }
+  }
+
+  @keyframes antispinner {
+    0% {
+      transform: rotate(3deg);
+    }
+
+    50% {
+      transform: rotate(-3deg);
+    }
+
+    100% {
+      transform: rotate(3deg);
+    }
+  }
+
+  .first-spin {
+    animation: 5s firstSpin ease;
+    animation-fill-mode: forwards;
+  }
+
+  .second-spin {
+    animation: 5s secondSpin ease;
+    animation-fill-mode: forwards;
+  }
+
+  @keyframes firstSpin {
+    from {
+      transform: rotate(0deg);
+    }
+
+    to {
+      transform: rotate(1350deg);
+    }
+  }
+
+  @keyframes secondSpin {
+    from {
+      transform: rotate(1350deg);
+    }
+
+    to {
+      transform: rotate(2970deg);
+    }
+  }
+
+  #banner .paragraph,
+  #banner p {
+    color: unset !important;
+    font-family: "Ubuntu", sans-serif;
+  }
+
+  .footer::after {
+    display: none;
+  }
+
+  .header::after {
+    display: none;
+  }
+
+  #weebly-footer-signup-container-v3 {
+    visibility: unset !important;
+    display: none !important;
+    height: unset !important;
+    position: unset !important;
+    bottom: 0px !important;
+    left: 0px;
+    right: 0px !important;
+    width: 100% !important;
+    z-index: -1 !important;
+    opacity: 0 !important;
+  }
+
+  #panel-one {
+    height: 0px !important;
+  }
+
+  #panel-two {
+    height: 100vh;
+
+    #banner {
+      height: 100%;
+    }
+  }
+
+  #wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+
+  .container {
+    padding: 0 !important;
+  }
+</style>
+<section class="body embeded-body" style="
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  ">
+  <header style="
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+      z-index: 10;
+      width: 100%;
+      left: 0;
+      top: 0;
+    ">
+    <div class="logo">
+      <style>
+        .logo {
+          padding: 20px 0 0 0;
+          width: 33.75%;
+          max-width: 324px;
+          height: 229.5px;
+
+          img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+          }
+        }
+
+        .wheel-text-wrapper {
+          width: 100%;
+          height: 100%;
+          padding-top: 5%;
+          display: flex;
+          align-items: center;
+          flex-direction: column;
+
+          p {
+            width: fit-content;
+            text-transform: uppercase;
+          }
+
+          p:not(last-child) {
+            margin-bottom: 6px;
+          }
+        }
+      </style><img src="https://alphaclick.click/system/loader.svg" alt="logo" />
+    </div>
+  </header>
+  <div class="main" style="
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: auto;
+    ">
+    <div class="wheel" style="
+        width: var(--wheel-size, 100%);
+        min-width: var(--wheel-size, 0);
+        flex: 0 0 var(--wheel-size, auto);
+        height: auto;
+        background: url(&quot;https://alphaclick.click/wheel/steel-wheel-holder.avif&quot;)
+          no-repeat top left / contain;
+        aspect-ratio: 1 / 1;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      ">
+      <div class="wheel-body animate" style="
+          position: relative;
+          background: black;
+          width: 75%;
+          height: 75%;
+          border-radius: 50%;
+          overflow: hidden;
+        ">
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-big-text wheel-text" style="color: #fbd84d !important; margin: 0 0 6px 0 !important">
+              +2
+            </p>
+            <p class="wheel-small-text wheel-text" style="color: #fff !important; margin: 0 !important">
+              Spins
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-empty-text wheel-text" style="color: #7ccc33 !important; margin: 0 0 6px 0 !important">
+              Nochmal
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-big-text wheel-text" style="color: #fbd84d !important; margin: 0 0 6px 0 !important">
+              300
+            </p>
+            <p class="wheel-small-text wheel-text" style="color: #fff !important; margin: 0 !important">
+              FS
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-empty-text wheel-text" style="color: #7ccc33 !important; margin: 0 !important">
+              Leer
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-big-text wheel-text" style="color: #fbd84d !important; margin: 0 0 6px 0 !important">
+              +2
+            </p>
+            <p class="wheel-small-text wheel-text" style="color: #fff !important; margin: 0 !important">
+              Spins
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-empty-text wheel-text" style="color: #7ccc33 !important; margin: 0 !important">
+              Nochmal
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-big-text wheel-text" style="color: #fbd84d !important; margin: 0 0 6px 0 !important">
+              BIS ZU
+            </p>
+            <p class="wheel-small-text wheel-text" style="color: #fff !important; margin: 0 !important">
+              3.000€
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-empty-text wheel-text" style="color: #7ccc33 !important; margin: 0 !important">
+              Leer
+            </p>
+          </div>
+        </div>
+        <style>
+          .wheel-text {
+            display: block;
+          }
+
+          .wheel-seg {
+            padding-top: 10px;
+            height: 51%;
+            width: 41.3%;
+            position: absolute;
+            -webkit-clip-path: polygon(100% 0, 50% 100%, 0 0);
+            clip-path: polygon(100% 0, 50% 100%, 0 0);
+            translate: -50% 0;
+            transform-origin: bottom;
+            text-align: center;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            left: 50%;
+          }
+
+          .wheel-seg:nth-child(odd) {
+            background: linear-gradient(0deg,
+                rgb(0, 169, 0) 23%,
+                rgb(0, 110, 0) 74%);
+          }
+
+          .wheel-seg:nth-child(even) {
+            background: linear-gradient(0deg,
+                rgb(0, 169, 0) 23%,
+                rgb(1, 87, 1) 74%);
+          }
+
+          .wheel-seg:nth-child(1) {
+            left: 50%;
+          }
+
+          .wheel-seg:nth-child(2) {
+            rotate: 45deg;
+          }
+
+          .wheel-seg:nth-child(3) {
+            rotate: 90deg;
+          }
+
+          .wheel-seg:nth-child(4) {
+            rotate: 135deg;
+          }
+
+          .wheel-seg:nth-child(5) {
+            rotate: 180deg;
+          }
+
+          .wheel-seg:nth-child(6) {
+            rotate: 225deg;
+          }
+
+          .wheel-seg:nth-child(7) {
+            rotate: 270deg;
+          }
+
+          .wheel-seg:nth-child(8) {
+            rotate: 315deg;
+          }
+        </style>
+      </div>
+      <button class="start" style="
+          position: absolute;
+          margin: auto;
+          top: 0;
+          bottom: 0;
+          right: 0;
+          left: 0;
+          background: url(&quot;https://alphaclick.click/wheel/trigger.avif&quot;)
+            no-repeat center/contain;
+          width: 25%;
+          height: 25%;
+          z-index: 10;
+          color: #612901;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-transform: uppercase;
+        ">
+        <p style="width: fit-content; padding: 0; margin:0; color: #612901;">Drehen</p>
+      </button>
+      <div class="frame">
+        <img src="https://alphaclick.click/wheel/wheel-win-frame.avif" alt="" />
+      </div>
+      <style>
+        .frame {
+          position: absolute;
+          z-index: 5;
+          top: -1%;
+          left: 50%;
+          translate: -50% 0;
+          height: 60%;
+
+          img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+          }
+        }
+
+        .popup {
+          position: fixed;
+          width: 100%;
+          height: 100%;
+          left: 0;
+          top: 0;
+          background: rgba(0, 0, 0, 0.4);
+          z-index: 10;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: 0.2s ease;
+          opacity: 0;
+          pointer-events: none;
+
+          .popup-body {
+            background: url("https://alphaclick.click/wheel/bg-modal.avif") no-repeat center / cover;
+            border: 2px solid #fbd84d;
+            border-radius: 20px;
+            padding: 30px;
+            width: 90%;
+            max-width: 600px;
+          }
+
+          .popup-btn {
+            width: 100%;
+            color: #612901;
+            border-bottom: 4px solid #7e5205;
+            background: rgb(224, 138, 13);
+            background: linear-gradient(180deg,
+                rgb(224, 138, 13) 0%,
+                rgb(255, 196, 70) 40%,
+                rgb(255, 196, 70) 60%,
+                rgb(224, 138, 13) 100%);
+            display: block;
+            border-radius: 16px;
+            font-size: 25px;
+            padding: 24px 33px;
+            text-transform: uppercase;
+            font-weight: 700;
+            margin-left: auto;
+            margin-right: auto;
+            overflow: hidden;
+            position: relative;
+            text-decoration: none;
+            text-align: center;
+          }
+
+          .popup-text {
+            color: #fff !important;
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 25px;
+            font-weight: 500;
+          }
+
+          .popup-text-value {
+            white-space: pre-line;
+          }
+        }
+
+        #second-popup {
+          .popup-text-prefix {
+            display: block;
+            margin-bottom: 10px;
+          }
+
+          .popup-text-value {
+            display: block;
+          }
+        }
+
+        .active-popup {
+          opacity: 1;
+          pointer-events: all;
+        }
+      </style>
+    </div>
+  </div>
+  <div class="offer" style="
+      padding: 15px;
+      border-radius: 15px;
+      background-color: rgba(0, 0, 0, 0.4);
+      position: relative;
+      z-index: 10;
+    ">
+    <h1 style="
+        color: #fbd84d !important;
+        text-align: center;
+        margin: 0 0 10px 0;
+        font-size: 30px;
+      ">
+      Drehe und gewinne!
+    </h1>
+    <p style="color: #fff !important; text-align: center; font-size: 22px">
+      Ihre Versuche: <span id="counter">2</span>
+    </p>
+  </div>
+  <div id="first-popup" class="popup">
+    <div class="popup-body">
+      <h2 class="popup-title" style="
+          color: #fbd84d !important;
+          text-align: center;
+          margin-bottom: 9px;
+          font-size: 30px;
+          margin-bottom: 20px;
+        ">
+        Dein Gewinn:
+      </h2>
+      <p class="popup-text">
+        <span class="popup-text-prefix"></span>
+        <span class="popup-text-value">300 FS</span>
+      </p>
+      <a href="#" id="secsp" class="popup-btn adopt">Nochmal</a>
+    </div>
+  </div>
+  <div id="second-popup" class="popup">
+    <div class="popup-body">
+      <h2 class="popup-title" style="
+          color: #fbd84d !important;
+          text-align: center;
+          margin-bottom: 9px;
+          font-size: 30px;
+          margin-bottom: 20px;
+        ">
+        Glückwunsch!
+      </h2>
+      <p class="popup-text">
+        <span class="popup-text-prefix">Dein Gewinn: 300 FS</span>
+        <span class="popup-text-value">+ BIS ZU 3.000€</span>
+      </p>
+      <a href="#" id="d25c38c9-c12e-670a-4afb-5b9f8d6045ee" class="popup-btn adopt">Bonus abholen</a>
+      <script>
+        document
+          .querySelector("#d25c38c9-c12e-670a-4afb-5b9f8d6045ee")
+          .addEventListener("click", function (e) {
+            e.preventDefault();
+            try {
+              sendConversions();
+            } catch (e) { }
+            window.location.href = CONFIG.offerURI;
+          });
+      </script>
+    </div>
+  </div>
+  <style>
+    .animate {
+      animation: 2s spinner ease-in-out infinite;
+    }
+
+    .wheel::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      translate: -50% -50%;
+      display: block;
+      width: 75%;
+      height: 75%;
+      background: url("https://alphaclick.click/wheel/wheel-mask.avif") no-repeat center / contain;
+    }
+
+    @media (max-width: 767px) {
+      .logo {
+        transform: translateY(-30px) !important;
+      }
+
+      .main {
+        top: -2vh !important;
+        transform: none !important;
+      }
+
+      .wheel {
+        --wheel-size: 100%;
+        top: 30px !important;
+        flex-shrink: 0 !important;
+        max-width: none !important;
+      }
+    }
+
+    @media (min-width: 500px) {
+      .wheel {
+        max-width: 700px;
+      }
+    }
+
+    .powered-by-badge {
+      display: none !important;
+    }
+  </style>
+  <script>
+    const startBtn = document.querySelector(".start");
+    const wheelBody = document.querySelector(".wheel-body");
+    const firstPopup = document.querySelector("#first-popup");
+    const secondPopup = document.querySelector("#second-popup");
+    const secsp = document.querySelector("#secsp");
+    let counter = document.querySelector("#counter");
+    const storageKey = `wheel-state:${CONFIG.lang}:${CONFIG.brand}`;
+
+    function readSavedState() {
+      try {
+        return JSON.parse(localStorage.getItem(storageKey) || "null");
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function saveFinishedState() {
+      const prefixNode = secondPopup.querySelector(".popup-text-prefix");
+      const valueNode = secondPopup.querySelector(".popup-text-value");
+
+      try {
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            finished: true,
+            bonus1: CONFIG.bonuses.first,
+            bonus2: CONFIG.bonuses.second,
+            popupPrefix: prefixNode ? prefixNode.textContent : "",
+            popupValue: valueNode ? valueNode.textContent : "",
+          }),
+        );
+      } catch (e) { }
+    }
+
+    function applySavedPopupText(state) {
+      const prefixNode = secondPopup.querySelector(".popup-text-prefix");
+      const valueNode = secondPopup.querySelector(".popup-text-value");
+
+      if (prefixNode && typeof state.popupPrefix === "string") {
+        prefixNode.textContent = state.popupPrefix;
+        prefixNode.hidden = !state.popupPrefix;
+      }
+
+      if (valueNode && typeof state.popupValue === "string") {
+        valueNode.textContent = state.popupValue;
+        valueNode.hidden = !state.popupValue;
+      }
+    }
+
+    function showSavedWinState() {
+      const state = readSavedState();
+      if (!state?.finished) return;
+
+      applySavedPopupText(state);
+      wheelBody.classList.remove("animate", "first-spin");
+      wheelBody.classList.add("second-spin");
+      firstPopup.classList.remove("active-popup");
+      secondPopup.classList.add("active-popup");
+      if (counter) counter.innerHTML = "0";
+      fitTexts().catch(() => { });
+    }
+
+    initPage().then(() => {
+      counter = document.querySelector("#counter");
+      showSavedWinState();
+    });
+    startBtn.addEventListener("click", function () {
+      if (readSavedState()?.finished) {
+        showSavedWinState();
+        return;
+      }
+
+      wheelBody.classList.remove("animate");
+      wheelBody.classList.add("first-spin");
+      if (counter) counter.innerHTML = "1";
+      setTimeout(function () {
+        firstPopup.classList.add("active-popup");
+      }, 6000);
+    });
+    secsp.addEventListener("click", function (e) {
+      e.preventDefault();
+      firstPopup.classList.remove("active-popup");
+      wheelBody.classList.add("second-spin");
+      if (counter) counter.innerHTML = "0";
+      setTimeout(function () {
+        saveFinishedState();
+        secondPopup.classList.add("active-popup");
+      }, 6000);
+    });
+  </script>
+
+</section>
+
+
+
+
+
+
+<!doctype html>
+<html lang="en-CA">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Home | Jackpot City Canada</title>
+
+  <meta name="description"
+    content="Jackpot City is a physical gaming and entertainment venue in Canada, with on-site gaming, dining and visit information.">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="index.html">
+  <link rel="icon" href="assets/logos/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="preload" href="assets/images/home-hero.webp" as="image" type="image/webp">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Home | Jackpot City">
+  <meta property="og:description"
+    content="Jackpot City is a physical gaming and entertainment venue in Canada, with on-site gaming, dining and visit information.">
+  <meta property="og:image" content="assets/images/home-hero.webp">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Home | Jackpot City">
+  <meta name="twitter:description"
+    content="Jackpot City is a physical gaming and entertainment venue in Canada, with on-site gaming, dining and visit information.">
+  <link rel="stylesheet" href="styles.css">
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@type":"EntertainmentBusiness","name":"Jackpot City","description":"Jackpot City is a physical gaming and entertainment venue in Canada, with on-site gaming, dining and visit information.","areaServed":"Canada","inLanguage":"en-CA","url":"index.html"}</script>
+</head>
+
+<body class="theme-angular"><a class="skip-link" href="#main">Skip to content</a>
+  <div class="scroll-progress" aria-hidden="true"><span></span></div>
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="Jackpot City home"><img src="assets/logos/logo.svg"
+        alt="Jackpot City physical venue" width="300" height="54"></a>
+    <button class="menu-toggle" type="button" aria-expanded="false"
+      aria-controls="primary-nav"><span></span><span></span><span></span><span class="sr-only">Open menu</span></button>
+    <nav id="primary-nav" class="primary-nav" aria-label="Primary navigation">
+      <a href="gaming-floor.html">Gaming Floor</a><a href="gaming-machines.html">Machines</a><a
+        href="table-games.html">Table Games</a><a href="whats-on.html">What’s On</a><a href="dining.html">Dining</a><a
+        href="visit.html">Plan Your Visit</a><a href="responsible-gaming.html">Responsible Gaming</a>
+      <a class="nav-cta" href="opening-hours.html">Visit details</a>
+    </nav>
+  </header>
+  <main id="main">
+    <section class="page-hero"><img src="assets/images/home-hero.webp"
+        alt="Original architectural illustration for the own the evening. enter the room. at Jackpot City" width="1200"
+        height="750" decoding="async">
+      <div class="hero-shade"></div>
+      <div class="hero-inner">
+        <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="index.html">Home</a><span
+            aria-hidden="true">/</span><span>Own the evening. Enter the room.</span></nav>
+        <p class="eyebrow">A city night, shaped around the room. · Canada</p>
+        <h1>Own the evening. Enter the room.</h1>
+        <p>Explore a land-based gaming hall designed for an in-person night out—machines, hosted tables, dining and
+          entertainment on location.</p>
+        <div class="button-row"><a class="button" href="visit.html">Plan Your Visit</a><a class="button ghost"
+            href="gaming-floor.html">View Gaming Floor</a></div>
+      </div>
+    </section>
+    <section class="entry-notice">
+      <div>
+        <p class="eyebrow">Before entering the gaming floor</p>
+        <h2>Valid photo identification is required</h2>
+        <p>Guests must meet the legal gaming age in the venue’s province or territory. All gaming described on this
+          website takes place inside the physical venue.</p>
+      </div><a class="button ghost" href="identification.html">View accepted ID guidance</a>
+    </section>
+    <section class="section venue-intro reveal">
+      <p class="eyebrow">Jackpot City · Canada</p>
+      <h2>A complete night out under one roof</h2>
+      <p class="lead">A considered physical entertainment venue where architectural atmosphere, on-site gaming, dining
+        and live programming meet under one roof.</p>
+      <p>Strong sightlines divide high-energy machine zones, hosted table areas and quieter social spaces without losing
+        the sense of one connected venue.</p>
+    </section>
+    <section class="quick-facts">
+      <article><span>Opening information</span>
+        <h3>Plan before travelling</h3>
+        <p>Current hours and holiday exceptions should always be confirmed with the physical venue.</p><a
+          href="opening-hours.html">Opening details →</a>
+      </article>
+      <article><span>Entry</span>
+        <h3>Local legal gaming age</h3>
+        <p>Bring current government-issued photo identification and follow venue entry requirements.</p><a
+          href="house-rules.html">House rules →</a>
+      </article>
+      <article><span>Safer visit</span>
+        <h3>Set time and spending limits</h3>
+        <p>Gaming is entertainment. Take breaks and never chase losses.</p><a href="responsible-gaming.html">Responsible
+          gaming →</a>
+      </article>
+    </section>
+    <section class="section experience-section">
+      <div class="section-head">
+        <p class="eyebrow">Explore the venue</p>
+        <h2>Gaming, entertainment and dining</h2>
+        <p>Browse the main on-site experiences, then use the visit guide for practical planning.</p>
+      </div>
+      <div class="experience-grid">
+        <article class="experience-tile reveal"><img src="assets/images/home-machines.webp"
+            alt="Gaming Machines at the physical venue" width="1200" height="750" loading="lazy" decoding="async">
+          <div>
+            <h3>Gaming Machines</h3>
+            <p>Physical equipment is arranged by pace and atmosphere, with clear circulation, seating breaks and
+              guest-service points nearby.</p><a href="gaming-machines.html">Read more <span
+                aria-hidden="true">→</span></a>
+          </div>
+        </article>
+        <article class="experience-tile reveal"><img src="assets/images/home-table-games.webp"
+            alt="Table Games &amp; Automated Tables at the physical venue" width="1200" height="750" loading="lazy"
+            decoding="async">
+          <div>
+            <h3>Table Games &amp; Automated Tables</h3>
+            <p>Hosted tables bring people together around the room. Availability, game type and table schedules are
+              confirmed at the venue.</p><a href="table-games.html">Read more <span aria-hidden="true">→</span></a>
+          </div>
+        </article>
+        <article class="experience-tile reveal"><img src="assets/images/home-entertainment.webp"
+            alt="What’s On at the physical venue" width="1200" height="750" loading="lazy" decoding="async">
+          <div>
+            <h3>What’s On</h3>
+            <p>Music, food and seasonal programming are presented as on-site experiences. Only confirmed listings should
+              be dated and published.</p><a href="whats-on.html">Read more <span aria-hidden="true">→</span></a>
+          </div>
+        </article>
+        <article class="experience-tile reveal"><img src="assets/images/gaming-floor-wide.webp"
+            alt="The Gaming Floor at the physical venue" width="1200" height="750" loading="lazy" decoding="async">
+          <div>
+            <h3>The Gaming Floor</h3>
+            <p>Strong sightlines divide high-energy machine zones, hosted table areas and quieter social spaces without
+              losing the sense of one connected venue.</p><a href="gaming-floor.html">Read more <span
+                aria-hidden="true">→</span></a>
+          </div>
+        </article>
+        <article class="experience-tile reveal"><img src="assets/images/home-dining.webp"
+            alt="Dining &amp; Lounge at the physical venue" width="1200" height="750" loading="lazy" decoding="async">
+          <div>
+            <h3>Dining &amp; Lounge</h3>
+            <p>Dark timber, copper light and a composed menu make the lounge part of the evening rather than an
+              afterthought.</p><a href="dining.html">Read more <span aria-hidden="true">→</span></a>
+          </div>
+        </article>
+        <article class="experience-tile reveal"><img src="assets/images/guest-services.webp"
+            alt="Guest Services at the physical venue" width="1200" height="750" loading="lazy" decoding="async">
+          <div>
+            <h3>Guest Services</h3>
+            <p>Wayfinding, accessibility information and assistance are available throughout the physical venue.</p><a
+              href="accessibility.html">Read more <span aria-hidden="true">→</span></a>
+          </div>
+        </article>
+        <article class="experience-tile reveal"><img src="assets/images/responsible-hero.webp"
+            alt="Safer Gaming at the physical venue" width="1200" height="750" loading="lazy" decoding="async">
+          <div>
+            <h3>Safer Gaming</h3>
+            <p>Practical tools, breaks and confidential support help keep gaming in perspective.</p><a
+              href="responsible-gaming.html">Read more <span aria-hidden="true">→</span></a>
+          </div>
+        </article>
+        <article class="experience-tile reveal"><img src="assets/images/venue-exterior.webp"
+            alt="Plan Your Visit at the physical venue" width="1200" height="750" loading="lazy" decoding="async">
+          <div>
+            <h3>Plan Your Visit</h3>
+            <p>Plan around identification, local age rules, transport and accessibility. Verified location details are
+              published only by the venue operator.</p><a href="visit.html">Read more <span
+                aria-hidden="true">→</span></a>
+          </div>
+        </article>
+      </div>
+    </section>
+    <section class="section faq-section">
+      <div class="section-head">
+        <p class="eyebrow">Questions before the visit</p>
+        <h2>Clear answers, no small print</h2>
+      </div>
+      <div class="accordion">
+        <div class="accordion-item">
+          <h3><button type="button" aria-expanded="true" aria-controls="faq-0-jackpot-ca">What age requirement
+              applies?<span>+</span></button></h3>
+          <div id="faq-0-jackpot-ca" class="accordion-panel">
+            <p>Entry follows the legal gaming age in the venue’s jurisdiction. New Zealand casino gaming areas are
+              restricted to guests aged 20 and over; Canadian requirements depend on the host province or territory.</p>
+          </div>
+        </div>
+        <div class="accordion-item">
+          <h3><button type="button" aria-expanded="false" aria-controls="faq-1-jackpot-ca">What identification should I
+              bring?<span>+</span></button></h3>
+          <div id="faq-1-jackpot-ca" class="accordion-panel" hidden>
+            <p>Bring current government-issued photo identification accepted in the venue’s jurisdiction. Staff may
+              request it at entry or inside age-restricted areas.</p>
+          </div>
+        </div>
+        <div class="accordion-item">
+          <h3><button type="button" aria-expanded="false" aria-controls="faq-2-jackpot-ca">Can I play through this
+              website?<span>+</span></button></h3>
+          <div id="faq-2-jackpot-ca" class="accordion-panel" hidden>
+            <p>No. All gaming takes place inside the physical venue. This website does not provide online gambling.</p>
+          </div>
+        </div>
+        <div class="accordion-item">
+          <h3><button type="button" aria-expanded="false" aria-controls="faq-3-jackpot-ca">Which games are available on
+              location?<span>+</span></button></h3>
+          <div id="faq-3-jackpot-ca" class="accordion-panel" hidden>
+            <p>Physical machine areas, hosted table zones and automated equipment may be available. The operator must
+              confirm the exact daily mix.</p>
+          </div>
+        </div>
+        <div class="accordion-item">
+          <h3><button type="button" aria-expanded="false" aria-controls="faq-4-jackpot-ca">Is the location
+              accessible?<span>+</span></button></h3>
+          <div id="faq-4-jackpot-ca" class="accordion-panel" hidden>
+            <p>The venue information includes step-free routes, seating and assistance guidance. Confirm any specific
+              requirement with guest services before travelling.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="final-cta">
+      <p class="eyebrow">Make a night of it</p>
+      <h2>A city night, shaped around the room.</h2>
+      <p>Explore the rooms, check entry guidance and plan an in-person visit.</p>
+      <div class="button-row"><a class="button" href="visit.html">Plan Your Visit</a><a class="button ghost"
+          href="dining.html">Explore Dining</a></div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="footer-grid">
+      <div><img src="assets/logos/logo.svg" alt="Jackpot City" width="300" height="54">
+        <p>A considered physical entertainment venue where architectural atmosphere, on-site gaming, dining and live
+          programming meet under one roof.</p>
+        <p class="venue-only">All gaming takes place inside the physical venue. This website offers visit information
+          only.</p>
+      </div>
+      <div>
+        <h2>Explore</h2><a href="gaming-floor.html">Gaming floor</a><a href="gaming-machines.html">Machines on
+          location</a><a href="table-games.html">Table areas</a><a href="automated-games.html">Automated games</a><a
+          href="dining.html">Dining & lounge</a>
+      </div>
+      <div>
+        <h2>Visit well</h2><a href="visit.html">Plan your visit</a><a href="house-rules.html">House rules</a><a
+          href="identification.html">Identification</a><a href="accessibility.html">Accessibility</a><a
+          href="responsible-gaming.html">Responsible gaming</a>
+      </div>
+      <div>
+        <h2>Information</h2><a href="faq.html">FAQ</a><a href="contact.html">Visit planner</a><a
+          href="careers.html">Careers</a><a href="privacy.html">Privacy</a><a href="cookies.html">Cookie choices</a><a
+          href="terms.html">Website terms</a>
+      </div>
+    </div>
+    <div class="footer-base"><span>© 2026 Jackpot City. Physical venue information.</span><span>Guests must meet the
+        legal gaming age in the venue’s province or territory.</span><button class="text-button" type="button"
+        data-cookie-open>Cookie settings</button></div>
+  </footer>
+  <button class="back-top" type="button" aria-label="Back to top">↑</button>
+  <section class="cookie-banner" role="dialog" aria-modal="false" aria-labelledby="cookie-title" hidden>
+    <div>
+      <p class="eyebrow">Privacy choice</p>
+      <h2 id="cookie-title">Choose how this site uses cookies</h2>
+      <p>Essential storage keeps your choice. Optional preferences are used only after consent.</p>
+    </div>
+    <div class="cookie-actions"><button type="button" data-cookie="accept">Accept All</button><button type="button"
+        class="ghost" data-cookie="reject">Reject All</button><button type="button" class="text-button"
+        data-cookie="manage">Manage Preferences</button></div>
+  </section>
+  <div class="modal" id="cookie-modal" role="dialog" aria-modal="true" aria-labelledby="cookie-modal-title" hidden>
+    <div class="modal-card"><button class="modal-close" type="button" aria-label="Close preferences">×</button>
+      <p class="eyebrow">Cookie controls</p>
+      <h2 id="cookie-modal-title">Manage preferences</h2>
+      <label class="toggle-row"><span><strong>Essential</strong><small>Required for privacy choices and basic
+            navigation.</small></span><input type="checkbox" checked disabled></label>
+      <label class="toggle-row"><span><strong>Experience preferences</strong><small>Allows optional interface
+            preferences on this device.</small></span><input id="preference-cookie" type="checkbox"></label>
+      <button type="button" data-cookie="save">Save preferences</button>
+    </div>
+  </div>
+  <script src="data.js"></script>
+  <script src="script.js" defer></script>
+</body>
+
+</html>
